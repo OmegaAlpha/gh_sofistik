@@ -80,7 +80,7 @@ namespace gh_sofistik
       }
    }
 
-   public class CreateLineLoad : GH_Component
+   class CreateLineLoad : GH_Component
    {
       public CreateLineLoad()
          : base("LINE", "LINE", "Creates SOFiSTiK Line Loads", "SOFiSTiK", "Loads")

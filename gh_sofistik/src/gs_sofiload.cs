@@ -10,7 +10,7 @@ using Rhino.Geometry;
 namespace gh_sofistik
 {
 
-   public class CreateSofiloadInput : GH_Component
+   class CreateSofiloadInput : GH_Component
    {
       public CreateSofiloadInput()
          : base("SOFiLOAD", "SOFiLOAD", "Creates a SOFiLOAD input file", "SOFiSTiK", "Loads")

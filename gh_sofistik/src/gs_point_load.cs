@@ -98,7 +98,7 @@ namespace gh_sofistik
    }
 
 
-   public class CreatePointLoad : GH_Component
+   class CreatePointLoad : GH_Component
    {
       public CreatePointLoad()
          : base("POIN","POIN","Creates SOFiSTiK Point Loads", "SOFiSTiK", "Loads")
