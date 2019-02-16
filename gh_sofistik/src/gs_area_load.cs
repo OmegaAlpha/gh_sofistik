@@ -12,14 +12,14 @@ using Rhino.Geometry;
 
 namespace gh_sofistik
 {
-   public class GS_AreaLoad : GH_GeometricGoo<Brep>, IGS_Load
+   public class GS_AreaLoad : GH_GeometricGoo<Brep>, IGS_Load, IGH_PreviewData
    {
       public int LoadCase { get; set; } = 0;
       public bool UseHostLocal { get; set; } = false;
       public Vector3d Forces { get; set; } = new Vector3d();
       public Vector3d Moments { get; set; } = new Vector3d();
-
-      public int ReferenceAreaId { get; set; } = 0;
+      
+      public GS_StructuralArea ReferenceArea { get; set; }
 
       public override string TypeName
       {
@@ -58,6 +58,14 @@ namespace gh_sofistik
          get { return Value.GetBoundingBox(true); }
       }
 
+      public BoundingBox ClippingBox
+      {
+         get
+         {
+            return DrawUtil.GetClippingBox(Value.GetBoundingBox(false), Forces.Length, Moments.Length);
+         }
+      }
+
       public override BoundingBox GetBoundingBox(Transform xform)
       {
          return xform.TransformBoundingBox(Value.GetBoundingBox(true));
@@ -77,6 +85,44 @@ namespace gh_sofistik
          dup.Value.Transform(xform);
 
          return dup;
+      }
+
+      public void DrawViewportWires(GH_PreviewWireArgs args)
+      {
+         //ClippingBox
+         //args.Pipeline.DrawBox(ClippingBox, System.Drawing.Color.Black);
+         
+         if (!(Value is null))
+         {
+            args.Pipeline.DrawBrepWires(Value, DrawUtil.DrawColForces);
+            if (!(Forces.Equals(Vector3d.Zero) && Moments.Equals(Vector3d.Zero)))
+            {
+               Vector3d lx = Vector3d.Zero;
+               if (!(ReferenceArea is null))
+               {
+                  lx = ReferenceArea.DirectionLocalX;                  
+               }
+               //   iterate over BrepFaces
+               foreach (BrepFace bf in Value.Faces)
+               {
+                  //   iterate over Edges of current face and draw this edge
+                  foreach (int beIndex in bf.AdjacentEdges())
+                  {
+                     DrawUtil.DrawCurve(args.Pipeline, Value.Edges[beIndex], Forces, Moments, UseHostLocal, lx, bf);
+                  }
+               }
+            }
+         }
+      }
+
+      public void DrawViewportMeshes(GH_PreviewMeshArgs args)
+      {
+         if (!(Value is null))
+         {
+            Rhino.Display.DisplayMaterial areaLoadMaterial = new Rhino.Display.DisplayMaterial(args.Material);
+            areaLoadMaterial.Diffuse = DrawUtil.DrawColForces;
+            args.Pipeline.DrawBrepShaded(Value, areaLoadMaterial);
+         }
       }
    }
 
@@ -115,9 +161,9 @@ namespace gh_sofistik
 
          var gs_area_loads = new List<GS_AreaLoad>();
 
-         int max_count = Math.Max(areas.Count, loadcases.Count); // either area or lc is the leading input
+         //int max_count = Math.Max(areas.Count, loadcases.Count); // either area or lc is the leading input
 
-         for (int i = 0; i < max_count; ++i)
+         for (int i = 0; i < areas.Count; ++i)
          {
             var area = areas.GetItemOrLast(i);
 
@@ -134,15 +180,15 @@ namespace gh_sofistik
                var sar = area as GS_StructuralArea;
 
                ll.Value = sar.Value;
-               ll.ReferenceAreaId = sar.Id; // pass id of structural area
+               ll.ReferenceArea = sar; // pass reference of structural area
             }
-            else if(area is GH_Brep)
+            else if (area is GH_GeometricGoo<Brep>)
             {
-               ll.Value = (area as GH_Brep).Value;
+               ll.Value = (area as GH_GeometricGoo<Brep>).Value;
             }
             else
             {
-               throw new Exception("Unable to Cast input to Curve Geometry");
+               throw new Exception("Unable to Cast input to Curve Geometry");    //exception for surface, no exception for surface in sar_factory
             }
 
             gs_area_loads.Add(ll);

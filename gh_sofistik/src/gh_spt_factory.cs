@@ -24,7 +24,22 @@ namespace gh_sofistik
       public int Id { get; set; } = 0;
       public Vector3d DirectionLocalX { get; set; } = new Vector3d();
       public Vector3d DirectionLocalZ { get; set; } = new Vector3d();
-      public string FixLiteral { get; set; } = string.Empty;
+
+      private string fixLiteral = string.Empty;
+      private bool[,,] fixBits = { { {false, false }, { false, false }, { false, false } }, { { false, false }, { false, false }, { false, false } } };      
+
+      public string FixLiteral
+      {
+         get
+         {
+            return fixLiteral;
+         }
+         set
+         {
+            fixLiteral = value;
+            DrawUtil.ParseFixString(fixLiteral, fixBits);
+         }
+      }
 
       public override BoundingBox Boundingbox
       {
@@ -105,13 +120,32 @@ namespace gh_sofistik
       {
          if(Value != null)
          {
-            args.Pipeline.DrawPoint(Value.Location, Rhino.Display.PointStyle.X, 5, System.Drawing.Color.Red);
+            args.Pipeline.DrawPoint(Value.Location, Rhino.Display.PointStyle.X, 5, DrawUtil.DrawColStrc);
+            drawSupportPoint(args.Pipeline, false);
          }
       }
 
       public void DrawViewportMeshes(GH_PreviewMeshArgs args)
       {
          // no need to draw meshes 
+         if (Value != null)
+         {
+            drawSupportPoint(args.Pipeline, true);
+         }
+      }
+
+      private void drawSupportPoint(Rhino.Display.DisplayPipeline pipeline, bool shaded)
+      {
+         if (DrawUtil.ScaleFactor > 0.0001)
+         {
+            Vector3d lx = Vector3d.XAxis;
+            Vector3d lz = Vector3d.ZAxis;
+            if (!DirectionLocalX.Equals(Vector3d.Zero)) lx = DirectionLocalX;
+            if (!DirectionLocalZ.Equals(Vector3d.Zero)) lz = DirectionLocalZ;
+            Transform tLocalGlobal = DrawUtil.GetGlobalTransformPoint(lx, lz);
+
+            DrawUtil.DrawSupport(pipeline, Value.Location, tLocalGlobal, fixBits, shaded);
+         }
       }
 
       public bool BakeGeometry(RhinoDoc doc, ObjectAttributes baking_attributes, out Guid obj_guid)

@@ -20,6 +20,7 @@ namespace gh_sofistik
       public double Thickness { get; set; } = 0.0;
       public Vector3d DirectionLocalX { get; set; } = new Vector3d();
 
+
       public override BoundingBox Boundingbox
       {
          get { return Value.GetBoundingBox(true); }
@@ -104,13 +105,16 @@ namespace gh_sofistik
       {
          if (Value != null)
          {
-            args.Pipeline.DrawBrepWires(Value, System.Drawing.Color.Red);
+            args.Pipeline.DrawBrepWires(Value, DrawUtil.DrawColStrc);
          }
       }
 
       public void DrawViewportMeshes(GH_PreviewMeshArgs args)
       {
          //throw new NotImplementedException();
+         Rhino.Display.DisplayMaterial areaStrcMaterial = new Rhino.Display.DisplayMaterial(args.Material);
+         areaStrcMaterial.Diffuse = DrawUtil.DrawColStrc;
+         args.Pipeline.DrawBrepShaded(Value, areaStrcMaterial);
       }
 
       public bool BakeGeometry(RhinoDoc doc, ObjectAttributes baking_attributes, out Guid obj_guid)

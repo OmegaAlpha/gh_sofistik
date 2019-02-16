@@ -18,15 +18,15 @@ namespace gh_sofistik
       string TypeName { get; }
    }
 
-   public class GS_PointLoad : GH_GeometricGoo<Point>, IGS_Load
+   public class GS_PointLoad : GH_GeometricGoo<Point>, IGS_Load, IGH_PreviewData
    {
       public int LoadCase { get; set; } = 0;
       public bool UseHostLocal { get; set; } = false;
       public Vector3d Forces { get; set; } = new Vector3d();
-      public Vector3d Moments { get; set; } = new Vector3d();
+      public Vector3d Moments { get; set; } = new Vector3d();      
 
-      public int ReferencePointId { get; set; } = 0;
-
+      public GS_StructuralPoint ReferencePoint { get; set; }
+      
       public override string TypeName
       {
          get { return "GS_PointLoad"; }
@@ -75,6 +75,13 @@ namespace gh_sofistik
          get { return Value.GetBoundingBox(true); }
       }
 
+      public BoundingBox ClippingBox
+      {
+         get {
+            return DrawUtil.GetClippingBox(Value.GetBoundingBox(false), Forces.Length, Moments.Length);
+         }
+      }
+
       public override BoundingBox GetBoundingBox(Transform xform)
       {
          return xform.TransformBoundingBox(Value.GetBoundingBox(true));
@@ -95,8 +102,50 @@ namespace gh_sofistik
 
          return dup;
       }
-   }
 
+      public void DrawViewportWires(GH_PreviewWireArgs args)
+      {         
+         //ClippingBox
+         //args.Pipeline.DrawBox(ClippingBox, System.Drawing.Color.Black);
+         if (!(Value is null) && !(Forces.Equals(Vector3d.Zero) && Moments.Equals(Vector3d.Zero)))   //if no point or, force AND moment are zero, nothing to draw
+         {
+            Vector3d tempForce = Forces;
+            Vector3d tempMoment = Moments;
+            if (UseHostLocal) //transformation needed
+            {
+               Vector3d lx = Vector3d.XAxis;   //default x,z directions
+               Vector3d lz = Vector3d.Negate(Vector3d.ZAxis);
+               //set localX and localZ directions if pointload has referencepoint and if directions are not zero
+               if (!(ReferencePoint is null))
+               {
+                  if (!ReferencePoint.DirectionLocalX.Equals(Vector3d.Zero)) lx = ReferencePoint.DirectionLocalX;
+                  if (!ReferencePoint.DirectionLocalZ.Equals(Vector3d.Zero)) lz = ReferencePoint.DirectionLocalZ;
+               }
+               Transform tempTf = DrawUtil.GetGlobalTransformPoint(lx, lz);   //setup transform
+               if (!Forces.Equals(Vector3d.Zero))
+               {
+                  tempForce = new Vector3d(Forces);
+                  tempForce.Transform(tempTf);
+               }
+               if (!Moments.Equals(Vector3d.Zero))
+               {
+                  tempMoment = new Vector3d(Moments);
+                  tempMoment.Transform(tempTf);
+               }
+
+            }
+            //draw force,moment if needed
+            if (!Forces.Equals(Vector3d.Zero))DrawUtil.DrawForceArrow(args.Pipeline, Value.Location, tempForce);
+            if (!Moments.Equals(Vector3d.Zero))DrawUtil.DrawMomentArrow(args.Pipeline, Value.Location, tempMoment);
+         }
+      }      
+
+      public void DrawViewportMeshes(GH_PreviewMeshArgs args)
+      {
+         //no meshes for arrow needed
+      }
+
+   }
 
    public class CreatePointLoad : GH_Component
    {
@@ -133,9 +182,7 @@ namespace gh_sofistik
 
          var gs_point_loads = new List<GS_PointLoad>();
 
-         int max_count = Math.Max(points.Count, loadcases.Count);
-
-         for (int i=0; i<max_count; ++i)
+         for (int i = 0; i < points.Count; ++i)
          {
             var point = points.GetItemOrLast(i);
 
@@ -147,14 +194,14 @@ namespace gh_sofistik
                UseHostLocal = hostlocals.GetItemOrLast(i)
             };
 
-            if(point is GS_StructuralPoint)
+            if (point is GS_StructuralPoint)
             {
                var spt = point as GS_StructuralPoint;
 
-               pl.Value = spt.Value;
-               pl.ReferencePointId = spt.Id; // pass id of structural point
+               pl.Value = spt.Value; 
+               pl.ReferencePoint = spt; // pass reference of structural point
             }
-            else if(point is GH_Point)
+            else if (point is GH_Point)
             {
                pl.Value = new Point((point as GH_Point).Value);
             }
@@ -165,7 +212,6 @@ namespace gh_sofistik
 
             gs_point_loads.Add(pl);
          }
-
          da.SetDataList(0, gs_point_loads);
       }
 

@@ -18,7 +18,21 @@ namespace gh_sofistik
       public int GroupId { get; set; } = 0;    
       public int SectionId { get; set; } = 0;
       public Vector3d DirectionLocalZ { get; set; } = new Vector3d();
-      public string FixLiteral { get; set; } = string.Empty;
+
+      private string fixLiteral = string.Empty;
+      private bool[,,] fixBits = { { { false, false }, { false, false }, { false, false } }, { { false, false }, { false, false }, { false, false } } };
+      public string FixLiteral
+      {
+         get
+         {
+            return fixLiteral;
+         }
+         set
+         {
+            fixLiteral = value;
+            DrawUtil.ParseFixString(fixLiteral, fixBits);
+         }
+      }
 
       public override BoundingBox Boundingbox
       {
@@ -88,13 +102,37 @@ namespace gh_sofistik
       {
          if(Value != null)
          {
-            args.Pipeline.DrawCurve(Value, System.Drawing.Color.Red);
+            args.Pipeline.DrawCurve(Value, DrawUtil.DrawColStrc);
+            drawSupportLine(args.Pipeline, false);
          }
       }
 
       public void DrawViewportMeshes(GH_PreviewMeshArgs args)
       {
          // no need to draw meshes
+         if (Value != null)
+         {
+            drawSupportLine(args.Pipeline, true);
+         }
+      }
+
+      private void drawSupportLine(Rhino.Display.DisplayPipeline pipeline, bool shaded)
+      {
+         if (DrawUtil.ScaleFactor > 0.0001)
+         {
+            Vector3d lz = Vector3d.ZAxis;            
+            if (!DirectionLocalZ.Equals(Vector3d.Zero)) lz = DirectionLocalZ;
+            double lineInc = Math.Round(Value.GetLength() * DrawUtil.DensityFactor);
+            lineInc = lineInc > 1 ? lineInc : 1;
+            lineInc = 1 / lineInc;
+            //iterate over curve segments, determined by lineInc
+            for (double i = 0; Math.Round(i, 4) <= 1; i += lineInc)
+            {
+              Transform tLocalGlobal = DrawUtil.GetGlobalTransformLine(Value.TangentAt(i * Value.GetLength()), lz);
+
+              DrawUtil.DrawSupport(pipeline, Value.PointAtNormalizedLength(i), tLocalGlobal, fixBits, shaded);
+            }
+         }
       }
 
       public bool BakeGeometry(RhinoDoc doc, ObjectAttributes baking_attributes, out Guid obj_guid)

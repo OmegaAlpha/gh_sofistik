@@ -111,6 +111,8 @@ namespace gh_sofistik
 
                if (sln.DirectionLocalZ.Length > 0.0)
                   sb.AppendFormat(" DRX {0:F6} {1:F6} {2:F6}", sln.DirectionLocalZ.X, sln.DirectionLocalZ.Y, sln.DirectionLocalZ.Z);
+               if (sln.DirectionLocalZ.Equals(Vector3d.Zero))
+                  sb.AppendFormat(" DRX {0:F6} {1:F6} {2:F6}", 0, 0, -1);
 
                if (string.IsNullOrWhiteSpace(sln.FixLiteral) == false)
                   sb.AppendFormat(" FIX {0}", sln.FixLiteral);
