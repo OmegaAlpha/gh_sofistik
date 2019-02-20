@@ -128,6 +128,8 @@ namespace gh_sofistik
                string id_string = sar.Id > 0 ? sar.Id.ToString() : "-";
                string grp_string = sar.GroupId > 0 ? sar.GroupId.ToString() : "-";
                string thk_string = sar.Thickness.ToString("F6");
+               string bedding_string = sar.Bedding.ToString("F6");
+               string text_string = sar.Text;
 
                // some preparations
                brep.CullUnusedSurfaces();
@@ -158,6 +160,12 @@ namespace gh_sofistik
                   {
                      sb.AppendFormat(" DRX {0:F6} {1:F6} {2:F6}", sar.DirectionLocalX.X, sar.DirectionLocalX.Y, sar.DirectionLocalX.Z);
                   }
+
+                  if (sar.Bedding != 0.0)
+                     sb.AppendFormat(" CB {0}", bedding_string);
+
+                  if (sar.Text != "")
+                     sb.AppendFormat(" {0}", text_string);
 
                   sb.AppendLine();
 

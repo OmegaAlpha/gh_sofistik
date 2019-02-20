@@ -19,6 +19,8 @@ namespace gh_sofistik
       public int ReinforcementId { get; set; } = 0;
       public double Thickness { get; set; } = 0.0;
       public Vector3d DirectionLocalX { get; set; } = new Vector3d();
+      public double Bedding { get; set; } = 0.0;
+      public string Text { get; set; } = "";
 
       public override BoundingBox Boundingbox
       {
@@ -50,7 +52,10 @@ namespace gh_sofistik
             MaterialId = this.MaterialId,
             ReinforcementId = this.ReinforcementId,
             Thickness = this.Thickness,
-            DirectionLocalX = this.DirectionLocalX
+            DirectionLocalX = this.DirectionLocalX,
+            Bedding = this.Bedding,
+            Text = this.Text
+         
          };
       }
 
@@ -175,6 +180,8 @@ namespace gh_sofistik
          pManager.AddIntegerParameter("Material", "Material", "Material number", GH_ParamAccess.list, 0);
          pManager.AddIntegerParameter("ReinforcementMaterial", "ReinfMat", "Reinforcement material number", GH_ParamAccess.list, 0);
          pManager.AddVectorParameter("Dir x", "Dir x", "Direction of local x-axis", GH_ParamAccess.list, new Vector3d());
+         pManager.AddNumberParameter("Bedding", "Bedding", "Bedding modulus for normal subgrade bedding [kN/m^3]", GH_ParamAccess.list, 0);
+         pManager.AddTextParameter("Text", "Text", "Extra text to add to structural area definition", GH_ParamAccess.list, "");
       }
 
       protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -191,6 +198,8 @@ namespace gh_sofistik
          var materials = da.GetDataList<int>(4);
          var matreinfs = da.GetDataList<int>(5);
          var xdirs = da.GetDataList<Vector3d>(6);
+         var bedding = da.GetDataList<double>(7);
+         var text = da.GetDataList<string>(8);
 
          var gh_structural_areas = new List<GS_StructuralArea>();
 
@@ -206,7 +215,9 @@ namespace gh_sofistik
                MaterialId = materials.GetItemOrLast(i),
                ReinforcementId = matreinfs.GetItemOrLast(i),
                Thickness = thicknss.GetItemOrLast(i),
-               DirectionLocalX = xdirs.GetItemOrLast(i)
+               DirectionLocalX = xdirs.GetItemOrLast(i),
+               Bedding = bedding.GetItemOrLast(i),
+               Text = text.GetItemOrLast(i)
             };
             gh_structural_areas.Add(ga);
          }
