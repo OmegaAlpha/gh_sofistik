@@ -1,25 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
-using Rhino;
-using Rhino.DocObjects;
 using Rhino.Geometry;
+using gh_sofistik.Structure;
 
-namespace gh_sofistik
+namespace gh_sofistik.Load
 {
-   public class GS_AreaLoad : GH_GeometricGoo<Brep>, IGS_Load
+   public class GS_AreaLoad : GH_GeometricGoo<Brep>, IGS_Load, IGH_PreviewData
    {
       public int LoadCase { get; set; } = 0;
       public bool UseHostLocal { get; set; } = false;
       public Vector3d Forces { get; set; } = new Vector3d();
       public Vector3d Moments { get; set; } = new Vector3d();
 
-      public int ReferenceAreaId { get; set; } = 0;
+      private LoadCondition _loadCondition = new LoadCondition();
+      private InfoPanel _infoPanel;
+
+      public GS_StructuralArea ReferenceArea { get; set; }
 
       public override string TypeName
       {
@@ -58,6 +56,14 @@ namespace gh_sofistik
          get { return Value.GetBoundingBox(true); }
       }
 
+      public BoundingBox ClippingBox
+      {
+         get
+         {
+            return DrawUtil.GetClippingBoxLoads(Value.GetBoundingBox(false), Forces.Length, Moments.Length);
+         }
+      }
+
       public override BoundingBox GetBoundingBox(Transform xform)
       {
          return xform.TransformBoundingBox(Value.GetBoundingBox(true));
@@ -78,25 +84,118 @@ namespace gh_sofistik
 
          return dup;
       }
+
+      public void DrawViewportWires(GH_PreviewWireArgs args)
+      {
+         //ClippingBox
+         //args.Pipeline.DrawBox(ClippingBox, System.Drawing.Color.Black);
+
+         if (!(Value is null))
+         {
+            System.Drawing.Color col = args.Color;
+            if (!DrawUtil.CheckSelection(col))
+            {
+               col = DrawUtil.DrawColorLoads;
+            }
+            else
+            {
+               drawInfoPanel(args.Pipeline, args.Viewport);
+            }
+
+            args.Pipeline.DrawBrepWires(Value, col, -1);
+
+            if (DrawUtil.ScaleFactorLoads > 0.0001 && !(Forces.IsTiny() && Moments.IsTiny()))
+            {
+               if (!_loadCondition.isValid)
+               {
+                  updateLoadTransforms();
+               }
+               _loadCondition.Draw(args.Pipeline, col);
+            }
+         }
+      }
+
+      private void drawInfoPanel(Rhino.Display.DisplayPipeline pipeline, Rhino.Display.RhinoViewport viewport)
+      {
+         if (DrawUtil.DrawInfo)
+         {
+            if (_infoPanel == null)
+            {
+               _infoPanel = new InfoPanel();
+               var amp = AreaMassProperties.Compute(Value);
+               _infoPanel.Positions.Add(Value.ClosestPoint(amp.Centroid));
+
+               _infoPanel.Content.Add("LC: " + LoadCase);
+               if (!Forces.IsTiny())
+                  _infoPanel.Content.Add("Force: " + Forces.Length);
+               if (!Moments.IsTiny())
+                  _infoPanel.Content.Add("Moment: " + Moments.Length);
+            }
+            _infoPanel.Draw(pipeline, viewport);
+         }
+      }
+
+      private void updateLoadTransforms()
+      {
+         _loadCondition = new LoadCondition(Forces, Moments);
+
+         Vector3d lx = Vector3d.Zero;
+         if (!(ReferenceArea is null))
+         {
+            lx = ReferenceArea.DirectionLocalX;
+         }
+         //   iterate over BrepFaces
+         foreach (BrepFace bf in Value.Faces)
+         {
+            //   iterate over Edges of current face and draw this edge
+            foreach (int beIndex in bf.AdjacentEdges())
+            {
+               var txList = DrawUtil.GetCurveTransforms(Value.Edges[beIndex], UseHostLocal, lx, bf, DrawUtil.ScaleFactorLoads, DrawUtil.DensityFactorLoads);
+               if (ReferenceArea != null && UseHostLocal && ReferenceArea.FlipZ)
+                  foreach (var tx in txList)
+                     _loadCondition.Transforms.Add(tx * Rhino.Geometry.Transform.Rotation(Math.PI, Vector3d.XAxis, Point3d.Origin));
+               else
+                  _loadCondition.Transforms.AddRange(txList);
+            }
+         }
+      }
+
+
+      public void DrawViewportMeshes(GH_PreviewMeshArgs args)
+      {
+         /*
+         if (!(Value is null))
+         {
+            args.Pipeline.DrawBrepShaded(Value, DrawUtil.DrawMaterialLoads);
+         }
+         */
+      }
    }
 
    public class CreateAreaLoad : GH_Component
    {
+      private System.Drawing.Bitmap _icon;
+
       public CreateAreaLoad()
          : base("Area Load", "Area Load", "Creates SOFiSTiK Area Loads", "SOFiSTiK", "Loads")
       { }
 
       protected override System.Drawing.Bitmap Icon
       {
-         get { return Properties.Resources.sofistik_24; } // TODO
+         get
+         {
+            if (_icon == null)
+               _icon = Util.GetBitmap(GetType().Assembly, "structural_area_load_24x24.png");
+            return _icon;
+         }
       }
 
       protected override void RegisterInputParams(GH_InputParamManager pManager)
       {
          pManager.AddGeometryParameter("Hosting Brep / Sar", "Brp / Sar", "Hosting Brep / SOFiSTiK Structural Area", GH_ParamAccess.list);
          pManager.AddIntegerParameter("LoadCase", "LoadCase", "Id of Load Case", GH_ParamAccess.list, 1);
-         pManager.AddVectorParameter("Force", "Force", "Acting Force", GH_ParamAccess.list, new Vector3d());
-         pManager.AddVectorParameter("Moment", "Moment", "Acting Moment", GH_ParamAccess.list, new Vector3d());
+         pManager.AddVectorParameter("Force", "Force", "Acting Force [kN/m^2]", GH_ParamAccess.list, new Vector3d());
+         pManager.AddVectorParameter("Moment", "Moment", "Acting Moment [kNm/m^2]", GH_ParamAccess.list, new Vector3d());
          pManager.AddBooleanParameter("HostLocal", "HostLocal", "Use local coordinate system of host", GH_ParamAccess.list, false);
       }
 
@@ -115,37 +214,43 @@ namespace gh_sofistik
 
          var gs_area_loads = new List<GS_AreaLoad>();
 
-         int max_count = Math.Max(areas.Count, loadcases.Count); // either area or lc is the leading input
+         //int max_count = Math.Max(areas.Count, loadcases.Count); // either area or lc is the leading input
 
-         for (int i = 0; i < max_count; ++i)
+         for (int i = 0; i < areas.Count; ++i)
          {
             var area = areas.GetItemOrLast(i);
 
-            var ll = new GS_AreaLoad()
+            if (!(area is null))
             {
-               LoadCase = loadcases.GetItemOrLast(i),
-               Forces = forces.GetItemOrLast(i),
-               Moments = moments.GetItemOrLast(i),
-               UseHostLocal = hostlocals.GetItemOrLast(i)
-            };
+               var ll = new GS_AreaLoad()
+               {
+                  LoadCase = loadcases.GetItemOrLast(i),
+                  Forces = forces.GetItemOrLast(i),
+                  Moments = moments.GetItemOrLast(i),
+                  UseHostLocal = hostlocals.GetItemOrLast(i)
+               };
 
-            if(area is GS_StructuralArea)
-            {
-               var sar = area as GS_StructuralArea;
+               bool addArea = true;
+               if (area is GS_StructuralArea)
+               {
+                  var sar = area as GS_StructuralArea;
 
-               ll.Value = sar.Value;
-               ll.ReferenceAreaId = sar.Id; // pass id of structural area
-            }
-            else if(area is GH_Brep)
-            {
-               ll.Value = (area as GH_Brep).Value;
-            }
-            else
-            {
-               throw new Exception("Unable to Cast input to Curve Geometry");
-            }
+                  ll.Value = sar.Value;
+                  ll.ReferenceArea = sar; // pass reference of structural area
+               }
+               else if (area is GH_GeometricGoo<Brep>)
+               {
+                  ll.Value = (area as GH_GeometricGoo<Brep>).Value;
+               }
+               else
+               {
+                  AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Unable to Cast input to Brep Geometry");
+                  addArea = false;
+               }
 
-            gs_area_loads.Add(ll);
+               if (addArea)
+                  gs_area_loads.Add(ll);
+            }
          }
 
          da.SetDataList(0, gs_area_loads);

@@ -1,26 +1,20 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 using System.Windows.Forms;
 using GH_IO.Serialization;
 using Grasshopper.Kernel;
-using Grasshopper.Kernel.Types;
-using Rhino;
-using Rhino.DocObjects;
-using Rhino.Geometry;
 
-namespace gh_sofistik
+namespace gh_sofistik.General
 {
-   public class ProjectFile : GH_Component
+   public class TextStream : GH_Component
    {
       private string _path_by_dialog = string.Empty;
       private string _path_active = string.Empty;
       private bool _stream_content = true;
+      private System.Drawing.Bitmap _icon;
 
-      public ProjectFile()
-         : base("Project File", "ProjFile", "Streams the given input to a SOFiSTiK project file", "SOFiSTiK", "General")
+      public TextStream()
+         : base("Text File", "TextFile", "Streams the given input to a text file (e.g. SOFiSTiK *.dat input)", "SOFiSTiK", "General")
       { }
 
       public override bool IsPreviewCapable
@@ -35,7 +29,12 @@ namespace gh_sofistik
 
       protected override System.Drawing.Bitmap Icon
       {
-         get { return Properties.Resources.calculate_24x24; }
+         get
+         {
+            if (_icon == null)
+               _icon = Util.GetBitmap(GetType().Assembly, "file_dat_24x24.png");
+            return _icon;
+         }
       }
 
       public override Guid ComponentGuid
@@ -45,8 +44,8 @@ namespace gh_sofistik
 
       protected override void RegisterInputParams(GH_InputParamManager pManager)
       {
-         pManager.AddTextParameter("SOFiSTiK Input", "Txt", "Input for SOFiSTiK calculation", GH_ParamAccess.list);
-         pManager.AddTextParameter("Path", "Path", "Path to Project File", GH_ParamAccess.item, string.Empty);
+         pManager.AddTextParameter("Text Input", "Txt", "Text input, e.g for SOFiSTiK calculation", GH_ParamAccess.list);
+         pManager.AddTextParameter("File Path", "Path", "Path to Text File", GH_ParamAccess.item, string.Empty);
       }
 
       protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -102,18 +101,20 @@ namespace gh_sofistik
          _path_active = file_name;
       }
 
-
       public override void AppendAdditionalMenuItems(System.Windows.Forms.ToolStripDropDown menu)
       {
          base.AppendAdditionalComponentMenuItems(menu);
 
          Menu_AppendSeparator(menu);
-         Menu_AppendItem(menu, "Select Project File", Menu_OnSelectProjectFile,Properties.Resources.folder_open_icon_16x16);
+         // Menu_AppendItem(menu, "Select Project File", Menu_OnSelectProjectFile,Properties.Resources.folder_open_icon_16x16);
          Menu_AppendItem(menu, "Stream Input", Menu_OnStreamContentClicked, true, _stream_content);
-         Menu_AppendSeparator(menu);
-         Menu_AppendItem(menu, "Calculate Project", Menu_OnCalculateWPS);
-         Menu_AppendItem(menu, "System Visualisation", Menu_OnOpenAnimator);
-         Menu_AppendItem(menu, "Open Teddy", Menu_OnOpenTeddy);
+
+         if (System.IO.Path.GetExtension(_path_active).ToLower() == ".dat")
+         {
+            Menu_AppendSeparator(menu);
+            Menu_AppendItem(menu, "System Visualisation", Menu_OnOpenAnimator);
+            Menu_AppendItem(menu, "Open Teddy", Menu_OnOpenTeddy);
+         }
       }
 
       private void Menu_OnStreamContentClicked(Object sender, EventArgs e)
@@ -155,33 +156,36 @@ namespace gh_sofistik
          }
       }
 
-      private void Menu_OnCalculateWPS(Object sender, EventArgs e)
-      {
-         // start wps
-         var process = new System.Diagnostics.Process();
-         process.StartInfo.FileName = "wps.exe";
-         process.StartInfo.Arguments = "/B \"" + _path_active + "\"";
-
-         if (!process.Start())
-            this.AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Unable to start SOFiSTiK WPS.exe");
-      }
-
       private void Menu_OnOpenAnimator(Object sender, EventArgs e)
       {
-         var process = new System.Diagnostics.Process();
-         process.StartInfo.FileName = "animator.exe";
-         process.StartInfo.Arguments = System.IO.Path.ChangeExtension(_path_active, ".cdb");
+         var cdb_path = System.IO.Path.ChangeExtension(_path_active, ".cdb");
+         if (System.IO.File.Exists(cdb_path))
+         {
+            var process = new System.Diagnostics.Process();
+            process.StartInfo.FileName = cdb_path;
 
-         process.Start();
+            if (!process.Start())
+               MessageBox.Show("Unable to open SOFiSTiK Animator?Is it already installed and connected with cdb files?", "SOFiSTiK");
+         }
+         else
+               MessageBox.Show("SOFiSTiK cdb file to be opened does not exist:\n" + cdb_path, "SOFiSTiK");
       }
 
       private void Menu_OnOpenTeddy(Object sender, EventArgs e)
       {
-         var process = new System.Diagnostics.Process();
-         process.StartInfo.FileName = "ted.exe";
-         process.StartInfo.Arguments = _path_active;
+         if (System.IO.Path.GetExtension(_path_active) == ".dat")
+         {
+            if (System.IO.File.Exists(_path_active))
+            {
+               var process = new System.Diagnostics.Process();
+               process.StartInfo.FileName = _path_active;
 
-         process.Start();
+               if (!process.Start())
+                  MessageBox.Show("Unable to open SOFiSTiK Text Editor? Is SOFiSTiK already installed?", "SOFiSTiK");
+            }
+            else
+               MessageBox.Show("SOFiSTiK dat fil to be opened does not exist:\n" + _path_active, "SOFiSTiK");
+         }
       }
 
       private void WriteDatContentTo(string path, List<string> text_input)

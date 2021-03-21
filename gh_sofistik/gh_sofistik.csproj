@@ -6,10 +6,9 @@
     <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
     <ProjectGuid>{BD7752A5-6D7A-4BBD-AE95-8CFD25EA1771}</ProjectGuid>
     <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties</AppDesignerFolder>
     <RootNamespace>gh_sofistik</RootNamespace>
     <AssemblyName>gh_sofistik</AssemblyName>
-    <TargetFrameworkVersion>v4.5</TargetFrameworkVersion>
+    <TargetFrameworkVersion>v4.7</TargetFrameworkVersion>
     <FileAlignment>512</FileAlignment>
     <TargetFrameworkProfile />
   </PropertyGroup>
@@ -31,6 +30,9 @@
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
     <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <PropertyGroup>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
   </PropertyGroup>
   <ItemGroup>
     <Reference Include="GH_IO">
@@ -55,15 +57,20 @@
     <Reference Include="System.Xml" />
   </ItemGroup>
   <ItemGroup>
-    <Compile Include="Properties\Resources.Designer.cs">
-      <AutoGen>True</AutoGen>
-      <DesignTime>True</DesignTime>
-      <DependentUpon>Resources.resx</DependentUpon>
-    </Compile>
+    <Compile Include="src\assemblyInfo.cs" />
+    <Compile Include="src\assemblyLoader.cs" />
+    <Compile Include="src\gh_aqua.cs" />
+    <Compile Include="src\gh_ase.cs" />
+    <Compile Include="src\gh_section.cs" />
+    <Compile Include="src\gh_spring.cs" />
+    <Compile Include="src\gh_elastic_coupling.cs" />
     <Compile Include="src\gh_calculate.cs" />
+    <Compile Include="src\gh_coupling.cs" />
     <Compile Include="src\gh_create_axis.cs" />
     <Compile Include="src\gh_helper.cs" />
+    <Compile Include="src\gh_units.cs" />
     <Compile Include="src\gs_area_load.cs" />
+    <Compile Include="src\gh_global_settings.cs" />
     <Compile Include="src\gs_line_load.cs" />
     <Compile Include="src\gs_point_load.cs" />
     <Compile Include="src\gh_sar_factory.cs" />
@@ -71,79 +78,39 @@
     <Compile Include="src\gs_sofiload.cs" />
     <Compile Include="src\gh_sofimshc.cs" />
     <Compile Include="src\gh_spt_factory.cs" />
+    <Compile Include="src\gh_sofistik_project.cs" />
   </ItemGroup>
   <ItemGroup>
-    <EmbeddedResource Include="Properties\Resources.resx">
-      <Generator>PublicResXFileCodeGenerator</Generator>
-      <LastGenOutput>Resources.Designer.cs</LastGenOutput>
-      <SubType>Designer</SubType>
-    </EmbeddedResource>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\structural_line16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\structural_point16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\structural_area16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\sofistik_32x32.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\animator24.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\winps24.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <Folder Include="Resources\" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\1_Teddy_Icon_16x16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\animator16.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\folder-open-icon 16x16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\wps.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\animator.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\teddy 16x16.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\animator 16x16.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\design\structural_point_32x32.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\design\structural_point_24x24.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\sofistik_24.bmp" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\structural_line-load-1.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\structural_point_load.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\calculate01.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\sofiload01.png" />
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="src\img\sofimshc01.png" />
+    <EmbeddedResource Include="src\embedded\images\animator_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\ase_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\open_explorer_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\report_browser_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\resultviewer_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\teddy_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\wingraf_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\sofistik_project_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\file_dat_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\loadcase_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\sofiload_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\sofimshc_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\sofistik_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_area_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_area_load_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_axis_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_constraint_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_elastic_constraint_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_line_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_line_load_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_point_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_point_load_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\structural_spring_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\user_options_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\aqua_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\section_brep_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\section_view_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\gh_sofistik_splash_500x200.png" />
+    <EmbeddedResource Include="src\embedded\images\section_attributes_24x24.png" />
+    <EmbeddedResource Include="src\embedded\images\section_attributes_loop_24x24.png" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

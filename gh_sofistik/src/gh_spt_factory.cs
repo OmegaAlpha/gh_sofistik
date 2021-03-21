@@ -1,8 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
@@ -10,11 +7,11 @@ using Rhino;
 using Rhino.DocObjects;
 using Rhino.Geometry;
 
-namespace gh_sofistik
+namespace gh_sofistik.Structure
 {
    public interface IGS_StructuralElement
    {
-      int Id { get; }
+      int Id { get; set; }
       string TypeName { get; }
    }
 
@@ -24,7 +21,31 @@ namespace gh_sofistik
       public int Id { get; set; } = 0;
       public Vector3d DirectionLocalX { get; set; } = new Vector3d();
       public Vector3d DirectionLocalZ { get; set; } = new Vector3d();
-      public string FixLiteral { get; set; } = string.Empty;
+
+      private SupportCondition _supp_condition = null;
+
+      private LocalFrameVisualisation _localFrame = new LocalFrameVisualisation();
+      private InfoPanel _infoPanel;
+
+      public string UserText { get; set; } = string.Empty;
+
+      private string fixLiteral = string.Empty;
+
+      public string FixLiteral
+      {
+         get
+         {
+            return fixLiteral;
+         }
+         set
+         {
+            if (value is null)
+               fixLiteral = "";
+            else
+               fixLiteral = value;
+            _supp_condition = new SupportCondition(fixLiteral);
+         }
+      }
 
       public override BoundingBox Boundingbox
       {
@@ -51,10 +72,11 @@ namespace gh_sofistik
          return new GS_StructuralPoint()
          {
             Value = new Point(this.Value.Location),
-            Id = this.Id,
+            Id = 0,
             DirectionLocalX = this.DirectionLocalX,
             DirectionLocalZ = this.DirectionLocalZ,
-            FixLiteral = this.FixLiteral
+            FixLiteral = this.FixLiteral,
+            UserText = this.UserText
          };
       }
 
@@ -91,27 +113,140 @@ namespace gh_sofistik
       public override IGH_GeometricGoo Transform(Transform xform)
       {
          var dup = this.DuplicateGeometry() as GS_StructuralPoint;
+
          dup.Value.Transform(xform);
+
+         var localVX = dup.DirectionLocalX;
+         var localVZ = dup.DirectionLocalZ;
+         localVX.Transform(xform);
+         localVZ.Transform(xform);
+         dup.DirectionLocalX = localVX;
+         dup.DirectionLocalZ = localVZ;
 
          return dup;
       }
 
       public BoundingBox ClippingBox
       {
-         get { return Boundingbox; }
+         get
+         {
+            if (fixLiteral.Equals(""))
+               return DrawUtil.GetClippingBoxLocalframe(Value.GetBoundingBox(false));
+            else
+               return DrawUtil.GetClippingBoxSuppLocal(Value.GetBoundingBox(false));
+         }
       }
 
       public void DrawViewportWires(GH_PreviewWireArgs args)
       {
-         if(Value != null)
+         //ClippingBox
+         //args.Pipeline.DrawBox(ClippingBox, System.Drawing.Color.Black);
+         if (Value != null)
          {
-            args.Pipeline.DrawPoint(Value.Location, Rhino.Display.PointStyle.X, 5, System.Drawing.Color.Red);
+            System.Drawing.Color colStr = args.Color;
+            System.Drawing.Color colSup = args.Color;
+            if (!DrawUtil.CheckSelection(colStr))
+            {
+               colStr = DrawUtil.DrawColorStructuralElements;
+               colSup = System.Drawing.Color.Black;
+            }
+            else
+            {
+               drawLocalFrame(args.Pipeline);
+               drawInfoPanel(args.Pipeline, args.Viewport);
+            }
+
+            args.Pipeline.DrawPoint(Value.Location, Rhino.Display.PointStyle.X, 5, colStr);
+
+            drawSupportPoint(args.Pipeline, colSup, false);
          }
       }
 
       public void DrawViewportMeshes(GH_PreviewMeshArgs args)
       {
          // no need to draw meshes 
+         if (Value != null)
+         {
+            drawSupportPoint(args.Pipeline, DrawUtil.DrawColorSupports, true);
+         }
+      }
+
+      private void drawInfoPanel(Rhino.Display.DisplayPipeline pipeline, Rhino.Display.RhinoViewport viewport)
+      {
+         if (DrawUtil.DrawInfo)
+         {
+            if (_infoPanel == null)
+            {
+               _infoPanel = new InfoPanel();
+               _infoPanel.Positions.Add(Value.Location);
+               if (Id != 0)
+                  _infoPanel.Content.Add("Id: " + Id);
+            }
+            _infoPanel.Draw(pipeline, viewport);
+         }
+      }
+
+      private void drawLocalFrame(Rhino.Display.DisplayPipeline pipeline)
+      {
+         if (DrawUtil.ScaleFactorLocalFrame > 0.0001)
+         {
+            if (!_localFrame.IsValid)
+               updateLocalFrameTransforms();
+            _localFrame.Draw(pipeline);
+         }
+      }
+
+      private void updateLocalFrameTransforms()
+      {
+         _localFrame.Transforms.Clear();
+
+         Transform tScale = Rhino.Geometry.Transform.Scale(Point3d.Origin, DrawUtil.ScaleFactorLocalFrame);
+
+         Vector3d lx = DirectionLocalX.IsTiny() ? Vector3d.XAxis : DirectionLocalX;
+         Vector3d lz = DirectionLocalZ.IsTiny() ? -1 * Vector3d.ZAxis : DirectionLocalZ;
+
+         Transform tFinal = TransformUtils.GetGlobalTransformPoint(lx, lz);
+
+         Transform tTranslate = Rhino.Geometry.Transform.Translation(new Vector3d(Value.Location));
+
+         tFinal = tTranslate * tFinal * tScale;
+
+         _localFrame.Transforms.Add(tFinal);
+      }
+
+      private void drawSupportPoint(Rhino.Display.DisplayPipeline pipeline, System.Drawing.Color col, bool shaded)
+      {
+         if (DrawUtil.ScaleFactorSupports > 0.0001 && _supp_condition.HasSupport)
+         {
+            if (!_supp_condition.IsValid)
+            {
+               updateSupportTransforms();
+            }
+            _supp_condition.Draw(pipeline, col, shaded);
+         }
+      }
+
+      private void updateSupportTransforms()
+      {
+         _supp_condition.Transforms.Clear();
+
+         Transform tScale = Rhino.Geometry.Transform.Scale(Point3d.Origin, DrawUtil.ScaleFactorSupports);
+
+         Vector3d lx = DirectionLocalX.IsTiny() ? Vector3d.XAxis : DirectionLocalX;
+         Vector3d lz = DirectionLocalZ.IsTiny() ? Vector3d.ZAxis : DirectionLocalZ;
+
+         Transform tFinal = Rhino.Geometry.Transform.Identity;
+
+         if (_supp_condition.LocalFrame)
+         {
+            tFinal = TransformUtils.GetGlobalTransformPoint(lx, lz);
+         }
+
+         Transform tTranslate = Rhino.Geometry.Transform.Translation(new Vector3d(Value.Location));
+
+         tFinal = tTranslate * tFinal * tScale;
+
+         _supp_condition.Transforms.Add(tFinal);
       }
 
       public bool BakeGeometry(RhinoDoc doc, ObjectAttributes baking_attributes, out Guid obj_guid)
@@ -120,33 +255,38 @@ namespace gh_sofistik
          {
             var att = baking_attributes.Duplicate();
 
-            string fix_literal = this.FixLiteral
-               .Replace("PP", "PXPYPZ")
-               .Replace("MM", "MXMYMZ");
-
-            if (fix_literal == "F")
-               fix_literal = "PXPYPZMXMYMZ";
-
-
             att.SetUserString("SOF_OBJ_TYPE", "SPT");
-            att.SetUserString("SOF_ID", this.Id.ToString());
+            att.SetUserString("SOF_ID", Math.Max(0,Id).ToString());
 
             if(DirectionLocalX.Length > 1.0E-6)
             {
-               att.SetUserString("SOF_SX", this.DirectionLocalX.X.ToString("F6"));
-               att.SetUserString("SOF_SY", this.DirectionLocalX.Y.ToString("F6"));
-               att.SetUserString("SOF_SZ", this.DirectionLocalX.Z.ToString("F6"));
+               var dir_x = DirectionLocalX; dir_x.Unitize();
+
+               att.SetUserString("SOF_SX", dir_x.X.ToString("F6"));
+               att.SetUserString("SOF_SY", dir_x.Y.ToString("F6"));
+               att.SetUserString("SOF_SZ", dir_x.Z.ToString("F6"));
             }
             if(DirectionLocalZ.Length > 1.0E-6)
             {
-               att.SetUserString("SOF_NX", this.DirectionLocalZ.X.ToString("F6"));
-               att.SetUserString("SOF_NY", this.DirectionLocalZ.Y.ToString("F6"));
-               att.SetUserString("SOF_NZ", this.DirectionLocalZ.Z.ToString("F6"));
+               var dir_z = DirectionLocalZ; dir_z.Unitize();
+
+               att.SetUserString("SOF_NX", DirectionLocalZ.X.ToString("F6"));
+               att.SetUserString("SOF_NY", DirectionLocalZ.Y.ToString("F6"));
+               att.SetUserString("SOF_NZ", DirectionLocalZ.Z.ToString("F6"));
             }
 
-            if(string.IsNullOrEmpty(fix_literal) == false)
-               att.SetUserString("SOF_FIX", fix_literal);
+            if(string.IsNullOrEmpty(fixLiteral) == false)
+            {
+               string fix_literal = FixLiteral.Replace("PP", "PXPYPZ").Replace("MM", "MXMYMZ");
 
+               if (fix_literal == "F")
+                  fix_literal = "PXPYPZMXMYMZ";
+
+               att.SetUserString("SOF_FIX", fix_literal);
+            }
+
+            if (string.IsNullOrWhiteSpace(UserText) == false)
+               att.SetUserString("SOF_USERTXT", UserText);
 
             obj_guid = doc.Objects.AddPoint(Value.Location, att);
          }
@@ -161,13 +301,20 @@ namespace gh_sofistik
    // create structural point
    public class CreateStructuralPoint : GH_Component
    {
+      private System.Drawing.Bitmap _icon;
+
       public CreateStructuralPoint()
          : base("Structural Point", "Structural Point", "Creates SOFiSTiK Structural Points", "SOFiSTiK", "Structure")
       { }
 
       protected override System.Drawing.Bitmap Icon
       {
-         get { return Properties.Resources.structural_point16; }
+         get
+         {
+            if (_icon == null)
+               _icon = Util.GetBitmap(GetType().Assembly, "structural_point_24x24.png");
+            return _icon;
+         }
       }
 
       protected override void RegisterInputParams(GH_InputParamManager pManager)
@@ -177,6 +324,7 @@ namespace gh_sofistik
          pManager.AddVectorParameter("Dir x", "Dir x", "Direction of local x-axis", GH_ParamAccess.list, new Vector3d());
          pManager.AddVectorParameter("Dir z", "Dir z", "Direction of local z-axis", GH_ParamAccess.list, new Vector3d());
          pManager.AddTextParameter("Fixation", "Fixation", "Support condition literal", GH_ParamAccess.list, string.Empty);
+         pManager.AddTextParameter("User Text", "User Text", "Custom User Text to be passed to the SOFiSTiK input", GH_ParamAccess.list, string.Empty);
       }
 
       protected override void RegisterOutputParams(GH_OutputParamManager pManager)
@@ -191,6 +339,7 @@ namespace gh_sofistik
          var xdirs = da.GetDataList<Vector3d>(2);
          var zdirs = da.GetDataList<Vector3d>(3);
          var fixations = da.GetDataList<string>(4);
+         var userText = da.GetDataList<string>(5);
 
          var gh_structural_points = new List<GS_StructuralPoint>();
 
@@ -204,7 +353,8 @@ namespace gh_sofistik
                Id = identifiers.GetItemOrCountUp(i),
                DirectionLocalX = xdirs.GetItemOrLast(i),
                DirectionLocalZ = zdirs.GetItemOrLast(i),
-               FixLiteral = fixations.GetItemOrLast(i)
+               FixLiteral = fixations.GetItemOrLast(i),
+               UserText = userText.GetItemOrLast(i)
             };
             gh_structural_points.Add(gp);
          }

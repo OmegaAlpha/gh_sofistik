@@ -1,23 +1,31 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Text;
 
 using Grasshopper.Kernel;
-using Grasshopper.Kernel.Types;
-using Rhino;
-using Rhino.DocObjects;
 using Rhino.Geometry;
 
 
-namespace gh_sofistik
+namespace gh_sofistik.Geometry
 {
    // creates SOFiSTiK axis input from a curve definition in GH
    public class CreateGeometricAxis : GH_Component
    {
+      private System.Drawing.Bitmap _icon;
+
       public CreateGeometricAxis()
-         : base("Geometric Axis","Geom Axis", "Creates a SOFiSTiK geometry axis definition from a curve","SOFiSTiK","Geometry")
+         : base("Geometric Axis","Geom Axis", "Creates a SOFiSTiK geometry axis definition from a curve","SOFiSTiK", "General")
       {}
+
+      protected override System.Drawing.Bitmap Icon
+      {
+         get
+         {
+            if (_icon == null)
+               _icon = Util.GetBitmap(GetType().Assembly, "structural_axis_24x24.png");
+            return _icon;
+         }
+      }
 
       protected override void RegisterInputParams(GH_InputParamManager pManager)
       {
@@ -43,63 +51,41 @@ namespace gh_sofistik
          var definitions = new List<string>();
          var lengths = new List<double>();
 
-         // over all curves passed in
-         for(int ic = 0; ic<curves.Count; ++ic)
-         {
-            var sb = new StringBuilder(1024);
+         var tU = Units.UnitHelper.GetUnitTransformToMeters();
+         bool scaleUnit = Rhino.RhinoDoc.ActiveDoc.ModelUnitSystem != Rhino.UnitSystem.Meters;
 
-            var c = curves[ic];
+         int count = Math.Max(curves.Count, names.Count);
+
+         // over all curves passed in
+         for (int i = 0; i < count; ++i)
+         {
+            var crv = curves.GetItemOrLast(i).DuplicateCurve();
+            var name = names.GetItemOrLast(i)?.Trim().ToUpper();
+            var type = types.GetItemOrLast(i);
+
+            // scale if neccessary
+            var lengthRhino = crv.GetLength();
+            if (scaleUnit)
+               crv.Transform(tU);
 
             // identifier
-            string name = names.GetItemOrLast(1)?.Trim().ToUpper();
-            if(string.IsNullOrWhiteSpace(name))
+            if (string.IsNullOrWhiteSpace(name))
             {
-               name = "G_" + (ic + 1).ToString();
+               name = "G_" + (i + 1).ToString();
             }
-            else if(names.Count != curves.Count && ic >= names.Count - 1)
+            else if (names.Count < curves.Count && i >= names.Count - 1)
             {
-               name = name + (ic + 1).ToString();
+               name = name + (i + 1).ToString();
             }
             if (name.Length > 4)
                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "Generated Identifier of Curve exceeds maximum allowed length of 4 characters");
 
             // type
-            string type = types.GetItemOrLast(ic);
             if (string.IsNullOrWhiteSpace(type))
                type = "LANE";
 
-            // write
-            if(c is LineCurve)
-            {
-               sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
-               AppendLineDefinition(sb, c);
-            }
-            else if(c is ArcCurve)
-            {
-               sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
-               AppendArcDefinition(sb, (c as ArcCurve));
-            }
-            else
-            {
-               NurbsCurve nb = (c as NurbsCurve) ?? c.ToNurbsCurve();
-               if (nb == null)
-                  throw new Exception("Unable to cast Curve at index " + (ic+1).ToString() + " to NurbsCurve");
-
-               if(nb.Knots.Count==2 && nb.Degree==1)
-               {
-                  sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
-                  AppendLineDefinition(sb, nb);
-               }
-               else
-               {
-                  sb.AppendFormat("GAX {0} TYPE {1} TYPC NURB DEGR {2}\n", name, type, nb.Degree);
-                  AppendNurbsDefinition(sb, nb);
-               }
-            }
-            sb.AppendLine();
-
-            definitions.Add(sb.ToString());
-            lengths.Add(c.GetLength());
+            definitions.Add(GetGeometryAxisDefinition(crv, name, type));
+            lengths.Add(lengthRhino);
          }
 
          da.SetDataList(0, definitions);
@@ -111,46 +97,70 @@ namespace gh_sofistik
          get { return new Guid("E0EE9840-CF44-4550-9640-2A0E56C1C768"); }
       }
 
-      private void AppendLineDefinition(StringBuilder sb, Curve c)
+      public static string GetGeometryAxisDefinition(Curve crv, string name, string type)
       {
-         Point3d pa = c.PointAt(0);
-         Point3d pe = c.PointAt(1);
+         var sb = new StringBuilder(1024);
+         // write
+         if (crv is LineCurve)
+         {
+            sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
+            AppendLineDefinition(sb, crv);
+         }
+         else if (crv is ArcCurve)
+         {
+            sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
+            AppendArcDefinition(sb, (crv as ArcCurve));
+         }
+         else
+         {
+            NurbsCurve nb = (crv as NurbsCurve) ?? crv.ToNurbsCurve();
+            if (nb == null)
+               throw new Exception("Unable to cast Curve " + name + " to NurbsCurve");
 
-         sb.AppendFormat(" GAXB X1 {0:F8} {1:F8} {2:F8} ", pa.X, pa.Y, pa.Z);
-         sb.AppendFormat(" X2 {0:F8} {1:F8} {2:F8} ", pe.X, pe.Y, pe.Z);
+            if (nb.Knots.Count == 2 && nb.Degree == 1)
+            {
+               sb.AppendFormat("GAX {0} TYPE {1}\n", name, type);
+               AppendLineDefinition(sb, nb);
+            }
+            else
+            {
+               sb.AppendFormat("GAX {0} TYPE {1} TYPC NURB DEGR {2}\n", name, type, nb.Degree);
+               AppendNurbsDefinition(sb, nb);
+            }
+         }
+         sb.AppendLine();
+         return sb.ToString();
+      }
+
+      private static void AppendLineDefinition(StringBuilder sb, Curve c)
+      {
+         Point3d pa = c.PointAtStart;
+         Point3d pe = c.PointAtEnd;
+
+         sb.AppendFormat(" GAXB X1 {0:F8} {1:F8} {2:F8} S1 {3:F8} ", pa.X, pa.Y, pa.Z, c.Domain.Min);
+         sb.AppendFormat(" X2 {0:F8} {1:F8} {2:F8} S2 {3:F8} ", pe.X, pe.Y, pe.Z, c.Domain.Max);
          sb.AppendLine();
       }
 
-      private void AppendArcDefinition(StringBuilder sb, ArcCurve ar)
+      private static void AppendArcDefinition(StringBuilder sb, ArcCurve ar)
       {
          Point3d pa = ar.PointAtStart;
          Point3d pe = ar.PointAtEnd;
          Point3d pm = ar.Arc.Center;
          Vector3d n = ar.Arc.Plane.Normal;
 
-         sb.AppendFormat(" GAXB X1 {0:F8} {1:F8} {2:F8} ", pa.X, pa.Y, pa.Z);
-         sb.AppendFormat(" X2 {0:F8} {1:F8} {2:F8} ", pe.X, pe.Y, pe.Z);
+         sb.AppendFormat(" GAXB X1 {0:F8} {1:F8} {2:F8} S1 {3:F8} ", pa.X, pa.Y, pa.Z, ar.Domain.Min);
+         sb.AppendFormat(" X2 {0:F8} {1:F8} {2:F8} S2 {3:F8} ", pe.X, pe.Y, pe.Z, ar.Domain.Max);
          sb.AppendFormat(" XM {0:F8} {1:F8} {2:F8} ", pm.X, pm.Y, pm.Z);
          sb.AppendFormat(" NX {0:F8} {1:F8} {2:F8} ", n.X, n.Y, n.Z);
          sb.AppendLine();
       }
 
-      private void AppendNurbsDefinition(StringBuilder sb, NurbsCurve nb)
+      private static void AppendNurbsDefinition(StringBuilder sb, NurbsCurve nb)
       {
-         double l = nb.GetLength();
-         double k0 = nb.Knots[0];
-         double kn = nb.Knots[nb.Knots.Count-1];
-
-         // re-parametrize knot vectors to length of curve
-         double scale = 1.0;
-         if (Math.Abs(kn - k0) > 1.0E-6)
-            scale = l / (kn - k0);
-
          for (int i = 0; i < nb.Knots.Count; ++i)
          {
-            double si = (nb.Knots[i] - k0) * scale;
-
-            sb.AppendFormat(" GAXN S {0:F8}", si);
+            sb.AppendFormat(" GAXN S {0:F8}", nb.Knots[i]);
             sb.AppendLine();
          }
 

@@ -1,25 +1,23 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
-using Rhino;
-using Rhino.DocObjects;
 using Rhino.Geometry;
+using gh_sofistik.Structure;
 
-namespace gh_sofistik
+namespace gh_sofistik.Load
 {
-   public class GS_LineLoad : GH_GeometricGoo<Curve>, IGS_Load
+   public class GS_LineLoad : GH_GeometricGoo<Curve>, IGS_Load, IGH_PreviewData
    {
       public int LoadCase { get; set; } = 0;
       public bool UseHostLocal { get; set; } = false;
       public Vector3d Forces { get; set; } = new Vector3d();
       public Vector3d Moments { get; set; } = new Vector3d();
 
-      public int ReferenceLineId { get; set; } = 0;
+      private LoadCondition _loadCondition = new LoadCondition();
+      private InfoPanel _infoPanel;
+
+      public GS_StructuralLine ReferenceLine { get; set; }
 
       public override string TypeName
       {
@@ -58,6 +56,13 @@ namespace gh_sofistik
          get { return Value.GetBoundingBox(true); }
       }
 
+      public BoundingBox ClippingBox
+      {
+         get {
+            return DrawUtil.GetClippingBoxLoads(Value.GetBoundingBox(false), Forces.Length, Moments.Length);
+         }
+      }
+
       public override BoundingBox GetBoundingBox(Transform xform)
       {
          return xform.TransformBoundingBox(Value.GetBoundingBox(true));
@@ -78,25 +83,97 @@ namespace gh_sofistik
 
          return dup;
       }
+
+      public void DrawViewportWires(GH_PreviewWireArgs args)
+      {
+         //draw clippingbox
+         //args.Pipeline.DrawBox(ClippingBox, System.Drawing.Color.Black);
+         if (!(Value is null))
+         {
+            System.Drawing.Color col = args.Color;
+            if (!DrawUtil.CheckSelection(col))
+            {
+               col = DrawUtil.DrawColorLoads;
+            }
+            else
+            {
+               drawInfoPanel(args.Pipeline, args.Viewport);
+            }
+
+            args.Pipeline.DrawCurve(Value, DrawUtil.DrawColorLoads, args.Thickness+1);
+
+            if ( DrawUtil.ScaleFactorLoads > 0.0001 && !(Forces.IsTiny() && Moments.IsTiny()) )
+            {
+               if (!_loadCondition.isValid)
+               {
+                  updateLoadTransforms();
+               }
+               _loadCondition.Draw(args.Pipeline, col);
+            }
+         }
+      }
+
+      private void drawInfoPanel(Rhino.Display.DisplayPipeline pipeline, Rhino.Display.RhinoViewport viewport)
+      {
+         if (DrawUtil.DrawInfo)
+         {
+            if (_infoPanel == null)
+            {
+               _infoPanel = new InfoPanel();
+               _infoPanel.Positions.Add(Value.PointAtNormalizedLength(0.5));
+
+               _infoPanel.Content.Add("LC: " + LoadCase);
+               if (!Forces.IsTiny())
+                  _infoPanel.Content.Add("Force: " + Forces.Length);
+               if (!Moments.IsTiny())
+                  _infoPanel.Content.Add("Moment: " + Moments.Length);
+            }
+            _infoPanel.Draw(pipeline, viewport);
+         }
+      }
+
+      private void updateLoadTransforms()
+      {
+         _loadCondition = new LoadCondition(Forces, Moments);
+         Vector3d lz = Vector3d.Negate(Vector3d.ZAxis);   //default local z
+         if (!(ReferenceLine is null))
+         {
+            if (!ReferenceLine.DirectionLocalZ.IsTiny())
+               lz = ReferenceLine.DirectionLocalZ;
+         }
+         _loadCondition.Transforms.AddRange(DrawUtil.GetCurveTransforms(Value, UseHostLocal, lz, null, DrawUtil.ScaleFactorLoads, DrawUtil.DensityFactorLoads));
+      }
+
+      public void DrawViewportMeshes(GH_PreviewMeshArgs args)
+      {
+         //no meshes for arrows needed
+      }
    }
 
    public class CreateLineLoad : GH_Component
    {
+      private System.Drawing.Bitmap _icon;
+
       public CreateLineLoad()
          : base("Line Load", "Line Load", "Creates SOFiSTiK Line Loads", "SOFiSTiK", "Loads")
       { }
 
       protected override System.Drawing.Bitmap Icon
       {
-         get { return Properties.Resources.structural_line_load_16; } // TODO
+         get
+         {
+            if (_icon == null)
+               _icon = Util.GetBitmap(GetType().Assembly, "structural_line_load_24x24.png");
+            return _icon;
+         }
       }
 
       protected override void RegisterInputParams(GH_InputParamManager pManager)
       {
          pManager.AddGeometryParameter("Hosting Curve / Sln", "Crv / Sln", "Hosting Curve / SOFiSTiK Structural Line", GH_ParamAccess.list);
          pManager.AddIntegerParameter("LoadCase", "LoadCase", "Id of Load Case", GH_ParamAccess.list, 1);
-         pManager.AddVectorParameter("Force", "Force", "Acting Force", GH_ParamAccess.list, new Vector3d());
-         pManager.AddVectorParameter("Moment", "Moment", "Acting Moment", GH_ParamAccess.list, new Vector3d());
+         pManager.AddVectorParameter("Force", "Force", "Acting Force [kN/m]", GH_ParamAccess.list, new Vector3d());
+         pManager.AddVectorParameter("Moment", "Moment", "Acting Moment [kNm/m]", GH_ParamAccess.list, new Vector3d());
          pManager.AddBooleanParameter("HostLocal", "HostLocal", "Use local coordinate system of host", GH_ParamAccess.list, false);
       }
 
@@ -115,45 +192,49 @@ namespace gh_sofistik
 
          var gs_line_loads = new List<GS_LineLoad>();
 
-         int max_count = Math.Max(curves.Count, loadcases.Count);
-
-         for (int i = 0; i < max_count; ++i)
+         for (int i = 0; i < curves.Count; ++i)
          {
             var curve = curves.GetItemOrLast(i);
 
-            var ll = new GS_LineLoad()
+            if (!(curve is null))
             {
-               LoadCase = loadcases.GetItemOrLast(i),
-               Forces = forces.GetItemOrLast(i),
-               Moments = moments.GetItemOrLast(i),
-               UseHostLocal = hostlocals.GetItemOrLast(i)
-            };
+               var ll = new GS_LineLoad()
+               {
+                  LoadCase = loadcases.GetItemOrLast(i),
+                  Forces = forces.GetItemOrLast(i),
+                  Moments = moments.GetItemOrLast(i),
+                  UseHostLocal = hostlocals.GetItemOrLast(i)
+               };
 
-            if(curve is GS_StructuralLine)
-            {
-               var sln = curve as GS_StructuralLine;
+               bool addCurve = true;
+               if (curve is GS_StructuralLine)
+               {
+                  var sln = curve as GS_StructuralLine;
 
-               ll.Value = sln.Value;
-               ll.ReferenceLineId = sln.Id; // pass id of structural line
-            }
-            else if(curve is GH_Curve)
-            {
-               ll.Value = (curve as GH_Curve).Value;
-            }
-            else if (curve is GH_Line)
-            {
-               ll.Value = new LineCurve((curve as GH_Line).Value);
-            }
-            else if (curve is GH_Arc)
-            {
-               ll.Value = new ArcCurve((curve as GH_Arc).Value);
-            }
-            else
-            {
-               throw new Exception("Unable to Cast input to Curve Geometry");
-            }
+                  ll.Value = sln.Value;
+                  ll.ReferenceLine = sln;  // pass reference of structural line
+               }
+               else if (curve is GH_Curve)
+               {
+                  ll.Value = (curve as GH_Curve).Value;
+               }
+               else if (curve is GH_Line)
+               {
+                  ll.Value = new LineCurve((curve as GH_Line).Value);
+               }
+               else if (curve is GH_Arc)
+               {
+                  ll.Value = new ArcCurve((curve as GH_Arc).Value);
+               }
+               else
+               {
+                  AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "Unable to Cast input to Curve Geometry");
+                  addCurve = false;
+               }
 
-            gs_line_loads.Add(ll);
+               if (addCurve)
+                  gs_line_loads.Add(ll);
+            }
          }
 
          da.SetDataList(0, gs_line_loads);
